@@ -31,4 +31,4 @@ onRecordBeforeCreateRequest((e) => {
   if(!validProverEndpoint){
     throw new BadRequestError("Failed to create prover endpoint, not a valid endpoint");
   }
-})
+}, "prover_endpoints")
