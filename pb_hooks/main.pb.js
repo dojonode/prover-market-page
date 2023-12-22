@@ -12,7 +12,7 @@ onRecordBeforeCreateRequest((e) => {
       method:  "GET",
       body:    "",
       headers: {"content-type": "application/json"},
-      timeout: 120, // in seconds
+      timeout: 30, // in seconds
     });
 
     if (response.statusCode == 200) {
@@ -50,7 +50,7 @@ routerAdd("get", "/validProvers", (c) => {
         method:  "GET",
         body:    "",
         headers: {"content-type": "application/json"},
-        timeout: 20, // in seconds
+        timeout: 4, // in seconds
       });
 
       if (response.statusCode == 200) {
