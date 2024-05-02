@@ -19,7 +19,7 @@ onRecordBeforeCreateRequest((e) => {
       const data = response.json;
 
       // Check if the endpoint is valid and contains the minProofFee and currentCapacity
-      if('minProofFee' in data && 'currentCapacity' in data){
+      if('minSgxTierFee' in data){
         console.log('creating the prover');
         validProverEndpoint = true;
       }
@@ -57,11 +57,10 @@ routerAdd("get", "/validProvers", (c) => {
         const data = response.json;
 
         // Check if the endpoint is valid and contains the minProofFee and currentCapacity
-        if('minProofFee' in data && 'currentCapacity' in data){
+        if('minSgxTierFee' in data){
           const validProver = {
             url: record.get('url'),
-            minimumGas: data.minProofFee,
-            currentCapacity: data.currentCapacity,
+            minimumGas: data.minSgxTierFee,
           };
 
           recordsResult = [...recordsResult, validProver];
