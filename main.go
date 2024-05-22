@@ -52,10 +52,10 @@ func main() {
 	})
 
 	// /validProvers endpoint to return list of prover endpoints that are online
-  app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
+	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.GET("/validProvers", func(c echo.Context) error {
-      // Check time
-      // start := time.Now()
+			// Check time
+			// start := time.Now()
 
 			// Check cache first
 			cachedData, err := rdb.Get(ctx, "validProvers").Result()
@@ -70,7 +70,7 @@ func main() {
 
 				var recordsResult []Prover
 
-  			// Loop through the records and store the endpoints that are available in recordsResult
+				// Loop through the records and store the endpoints that are available in recordsResult
 
 				for _, record := range records {
 					validProver, err := checkProverEndpoint(record.GetString("url"))
@@ -91,8 +91,8 @@ func main() {
 				if err != nil {
 					return err
 				}
-        // timeElapsed := time.Since(start)
-        // fmt.Printf("Uncached hit, this took a while: %fs\n", timeElapsed.Seconds())
+				// timeElapsed := time.Since(start)
+				// fmt.Printf("Uncached hit, this took a while: %fs\n", timeElapsed.Seconds())
 				return c.JSON(http.StatusOK, recordsResult)
 			} else if err != nil {
 				return err
@@ -103,10 +103,10 @@ func main() {
 			if err := json.Unmarshal([]byte(cachedData), &recordsResult); err != nil {
 				return err
 			}
-      // timeElapsed := time.Since(start)
-      // fmt.Printf("Cache hit, this was fast: %fs\n", timeElapsed.Seconds())
+			// timeElapsed := time.Since(start)
+			// fmt.Printf("Cache hit, this was fast: %fs\n", timeElapsed.Seconds())
 			return c.JSON(http.StatusOK, recordsResult)
-		}, /* optional middlewares */)
+		} /* optional middlewares */)
 
 		return nil
 	})
@@ -127,35 +127,35 @@ func main() {
 			return fmt.Errorf("Failed to create prover %s: %s", newProverEndpoint, err)
 		}
 
-    // Retrieve existing JSON data from Redis
-    existingJSON, err := rdb.Get(ctx, "validProvers").Result()
-    if err != nil && err != redis.Nil {
-        return err
-    }
+		// Retrieve existing JSON data from Redis
+		existingJSON, err := rdb.Get(ctx, "validProvers").Result()
+		if err != nil && err != redis.Nil {
+			return err
+		}
 
-    // Unmarshal existing JSON data into a slice of Prover structs
-    var existingProvers []Prover
-    if existingJSON != "" {
-        if err := json.Unmarshal([]byte(existingJSON), &existingProvers); err != nil {
-            return err
-        }
-    }
+		// Unmarshal existing JSON data into a slice of Prover structs
+		var existingProvers []Prover
+		if existingJSON != "" {
+			if err := json.Unmarshal([]byte(existingJSON), &existingProvers); err != nil {
+				return err
+			}
+		}
 
-    // Append the new prover to the slice
-    existingProvers = append(existingProvers, *validProver)
+		// Append the new prover to the slice
+		existingProvers = append(existingProvers, *validProver)
 
-    // Marshal the updated slice back to JSON
-    updatedJSON, err := json.Marshal(existingProvers)
-    if err != nil {
-        return err
-    }
+		// Marshal the updated slice back to JSON
+		updatedJSON, err := json.Marshal(existingProvers)
+		if err != nil {
+			return err
+		}
 
-    // Store the updated JSON data back to Redis
-    err = rdb.Set(ctx, "validProvers", updatedJSON, time.Hour).Err()
-    if err != nil {
-        return err
-    }
-    log.Printf("Created the prover: %s and added to the cache\n", newProverEndpoint)
+		// Store the updated JSON data back to Redis
+		err = rdb.Set(ctx, "validProvers", updatedJSON, time.Hour).Err()
+		if err != nil {
+			return err
+		}
+		log.Printf("Created the prover: %s and added to the cache\n", newProverEndpoint)
 
 		return nil
 	})
