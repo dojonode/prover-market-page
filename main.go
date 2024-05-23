@@ -117,14 +117,14 @@ func main() {
 		// Get the URL value of the record
 		newProverEndpoint, err := url.Parse(e.Record.GetString("url"))
 		if err != nil {
-			return fmt.Errorf("Error parsing URL: %v\n", err)
+			return fmt.Errorf("error parsing URL: %v", err)
 		}
 
 		// Check if prover endpoint is reachable
 		validProver, err := checkProverEndpoint(newProverEndpoint.String())
 
 		if err != nil {
-			return fmt.Errorf("Failed to create prover %s: %s", newProverEndpoint, err)
+			return fmt.Errorf("failed to create prover %s: %s", newProverEndpoint, err)
 		}
 
 		// Retrieve existing JSON data from Redis
