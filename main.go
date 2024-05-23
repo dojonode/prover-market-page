@@ -40,7 +40,7 @@ func main() {
 
 	// Initialize Redis client
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379", // Use your Redis server address
+		Addr:     "redis-server:6379", // Use your Redis server address
 		Password: "",
 		DB:       0,
 	})

@@ -1,7 +1,10 @@
-version: "3.7"
 services:
   pocketbase:
-    image: ghcr.io/muchobien/pocketbase:latest
+    build:
+      context: . # build the image from the Dockerfile in the current directory
+      dockerfile: Dockerfile
+    depends_on:
+      - redis-server # this service depends on redis, so start that first
     container_name: pocketbase
     restart: unless-stopped
     ports:
@@ -9,9 +12,13 @@ services:
     volumes:
       - ./pb_data:/pb_data
       # - ./pb_public:/pb_public #optional
-      - ./pb_hooks:/pb_hooks #optional
+      # - ./pb_hooks:/pb_hooks #optional
     healthcheck: #optional (recommended) since v0.10.0
       test: wget --no-verbose --tries=1 --spider http://localhost:8090/api/health || exit 1
       interval: 5s
       timeout: 5s
       retries: 5
+  redis-server:
+    image: redis:7.2.5
+    ports:
+      - '6379:6379'
