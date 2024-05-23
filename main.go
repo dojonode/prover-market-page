@@ -29,6 +29,12 @@ type Prover struct {
 	MinimumGas int    `json:"minimumGas"`
 }
 
+// CacheData represents the structure of cached data with a timestamp
+type CacheData struct {
+	Timestamp int64    `json:"timestamp"`
+	Data      []Prover `json:"data"`
+}
+
 // Redis caching instance
 var (
 	rdb *redis.Client
@@ -40,7 +46,7 @@ func main() {
 
 	// Initialize Redis client
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "redis-server:6379", // Use your Redis server address
+		Addr:     "redis-server:6379", // Use localhost during development, redis-server points to the docker-compose redis container
 		Password: "",
 		DB:       0,
 	})
@@ -51,62 +57,33 @@ func main() {
 		return nil
 	})
 
-	// /validProvers endpoint to return list of prover endpoints that are online
+  // validProvers endpoint to return list of prover endpoints that are online
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.GET("/validProvers", func(c echo.Context) error {
-			// Check time
-			// start := time.Now()
-
 			// Check cache first
 			cachedData, err := rdb.Get(ctx, "validProvers").Result()
 			if err == redis.Nil {
-				// Cache miss, proceed to fetch from DB
-				query := app.Dao().RecordQuery("prover_endpoints").Limit(1000)
-
-				records := []*models.Record{}
-				if err := query.All(&records); err != nil {
-					return err
-				}
-
-				var recordsResult []Prover
-
-				// Loop through the records and store the endpoints that are available in recordsResult
-
-				for _, record := range records {
-					validProver, err := checkProverEndpoint(record.GetString("url"))
-					if err != nil {
-						continue
-					}
-					if validProver != nil {
-						recordsResult = append(recordsResult, *validProver)
-					}
-				}
-
-				// Cache the result
-				data, err := json.Marshal(recordsResult)
-				if err != nil {
-					return err
-				}
-				err = rdb.Set(ctx, "validProvers", data, time.Hour).Err()
-				if err != nil {
-					return err
-				}
-				// timeElapsed := time.Since(start)
-				// fmt.Printf("Uncached hit, this took a while: %fs\n", timeElapsed.Seconds())
-				return c.JSON(http.StatusOK, recordsResult)
+				// Cache miss, proceed to fetch manually
+				return fetchAndCacheValidProvers(app)
 			} else if err != nil {
 				return err
 			}
 
-			// Cache hit, return cached data
-			var recordsResult []Prover
-			if err := json.Unmarshal([]byte(cachedData), &recordsResult); err != nil {
+			// Cache hit, check if data is stale
+			var cacheData CacheData
+			if err := json.Unmarshal([]byte(cachedData), &cacheData); err != nil {
 				return err
 			}
-			// timeElapsed := time.Since(start)
-			// fmt.Printf("Cache hit, this was fast: %fs\n", timeElapsed.Seconds())
-			return c.JSON(http.StatusOK, recordsResult)
-		} /* optional middlewares */)
+
+			// Check if the cache is stale
+			if time.Since(time.Unix(cacheData.Timestamp, 0)) > time.Hour {
+				// Serve stale data and refresh the cache in the background
+				go fetchAndCacheValidProvers( app)
+			}
+
+			// Serve cached data
+			return c.JSON(http.StatusOK, cacheData.Data)
+		})
 
 		return nil
 	})
@@ -163,6 +140,44 @@ func main() {
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func fetchAndCacheValidProvers(app *pocketbase.PocketBase) error {
+	query := app.Dao().RecordQuery("prover_endpoints").Limit(1000)
+
+	records := []*models.Record{}
+	if err := query.All(&records); err != nil {
+		return err
+	}
+
+	var recordsResult []Prover
+
+	// Loop through the records and store the endpoints that are available in recordsResult
+	for _, record := range records {
+		validProver, err := checkProverEndpoint(record.GetString("url"))
+		if err != nil {
+			continue
+		}
+		if validProver != nil {
+			recordsResult = append(recordsResult, *validProver)
+		}
+	}
+
+	// Cache the result with a new timestamp
+	cacheData := CacheData{
+		Timestamp: time.Now().Unix(),
+		Data:      recordsResult,
+	}
+	data, err := json.Marshal(cacheData)
+	if err != nil {
+		return err
+	}
+  // Set cache that automatically resets after 24 hours
+	err = rdb.Set(ctx, "validProvers", data, 24 * time.Hour).Err()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func checkProverEndpoint(url string) (*Prover, error) {
