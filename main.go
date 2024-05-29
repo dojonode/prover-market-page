@@ -40,9 +40,10 @@ var (
 	rdb *redis.Client
 	ctx = context.Background()
 )
+
 const (
-    MAINNET_PROVER_ENDPOINTS = "prover_endpoints"
-    TESTNET_PROVER_ENDPOINTS = "testnet_prover_endpoints"
+	MAINNET_PROVER_ENDPOINTS = "prover_endpoints"
+	TESTNET_PROVER_ENDPOINTS = "testnet_prover_endpoints"
 )
 
 func main() {
@@ -50,7 +51,7 @@ func main() {
 
 	// Initialize Redis client
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "redis-server:6379", // Use localhost during development, redis-server points to the docker-compose redis container
+		Addr:     "localhost:6379", // Use localhost during development, redis-server points to the docker-compose redis container
 		Password: "",
 		DB:       0,
 	})
@@ -61,14 +62,22 @@ func main() {
 		return nil
 	})
 
-  // validProvers endpoint to return list of prover endpoints that are online
+	// validProvers endpoint to return list of prover endpoints that are online
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.GET("/validProvers", func(c echo.Context) error {
 			// Check cache first
 			cachedData, err := rdb.Get(ctx, MAINNET_PROVER_ENDPOINTS).Result()
 			if err == redis.Nil {
 				// Cache miss, proceed to fetch manually
-				return fetchAndCacheValidProvers(app, MAINNET_PROVER_ENDPOINTS)
+				if err := fetchAndCacheValidProvers(app, MAINNET_PROVER_ENDPOINTS); err != nil {
+					return err
+				}
+
+				// Retry getting the cached data now that it is fetched
+				cachedData, err = rdb.Get(ctx, MAINNET_PROVER_ENDPOINTS).Result()
+				if err != nil {
+					return c.JSON(http.StatusOK, []Prover{}) // Return an empty array on error
+				}
 			} else if err != nil {
 				return err
 			}
@@ -92,14 +101,22 @@ func main() {
 		return nil
 	})
 
-  // validTestnetProvers endpoint to return list of prover endpoints that are online
+	// validTestnetProvers endpoint to return list of prover endpoints that are online
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.GET("/validTestnetProvers", func(c echo.Context) error {
 			// Check cache first
 			cachedData, err := rdb.Get(ctx, TESTNET_PROVER_ENDPOINTS).Result()
 			if err == redis.Nil {
 				// Cache miss, proceed to fetch manually
-				return fetchAndCacheValidProvers(app, TESTNET_PROVER_ENDPOINTS)
+				if err := fetchAndCacheValidProvers(app, TESTNET_PROVER_ENDPOINTS); err != nil {
+					return err
+				}
+
+				// Retry getting the cached data now that it is fetched
+				cachedData, err = rdb.Get(ctx, TESTNET_PROVER_ENDPOINTS).Result()
+				if err != nil {
+					return c.JSON(http.StatusOK, []Prover{}) // Return an empty array on error
+				}
 			} else if err != nil {
 				return err
 			}
@@ -146,24 +163,25 @@ func main() {
 		}
 
 		// Unmarshal existing JSON data into a slice of Prover structs
-		var existingProvers []Prover
+		var cacheData CacheData
 		if existingJSON != "" {
-			if err := json.Unmarshal([]byte(existingJSON), &existingProvers); err != nil {
+			if err := json.Unmarshal([]byte(existingJSON), &cacheData); err != nil {
 				return err
 			}
 		}
 
 		// Append the new prover to the slice
-		existingProvers = append(existingProvers, *validProver)
+		cacheData.Data = append(cacheData.Data, *validProver)
+		cacheData.Timestamp = time.Now().Unix()
 
 		// Marshal the updated slice back to JSON
-		updatedJSON, err := json.Marshal(existingProvers)
+		updatedJSON, err := json.Marshal(cacheData)
 		if err != nil {
 			return err
 		}
 
 		// Store the updated JSON data back to Redis
-		err = rdb.Set(ctx, "validProvers", updatedJSON, time.Hour).Err()
+		err = rdb.Set(ctx, MAINNET_PROVER_ENDPOINTS, updatedJSON, time.Hour).Err()
 		if err != nil {
 			return err
 		}
@@ -173,7 +191,7 @@ func main() {
 	})
 	// intercept create requests to check if the prover is a valid endpoint
 	// fires only for "testnet_prover_endpoints" collection
-	app.OnRecordBeforeCreateRequest("prover_endpoints").Add(func(e *core.RecordCreateEvent) error {
+	app.OnRecordBeforeCreateRequest("testnet_prover_endpoints").Add(func(e *core.RecordCreateEvent) error {
 		// Get the URL value of the record
 		newProverEndpoint, err := url.Parse(e.Record.GetString("url"))
 		if err != nil {
@@ -194,24 +212,25 @@ func main() {
 		}
 
 		// Unmarshal existing JSON data into a slice of Prover structs
-		var existingProvers []Prover
+		var cacheData CacheData
 		if existingJSON != "" {
-			if err := json.Unmarshal([]byte(existingJSON), &existingProvers); err != nil {
+			if err := json.Unmarshal([]byte(existingJSON), &cacheData); err != nil {
 				return err
 			}
 		}
 
 		// Append the new prover to the slice
-		existingProvers = append(existingProvers, *validProver)
+		cacheData.Data = append(cacheData.Data, *validProver)
+		cacheData.Timestamp = time.Now().Unix()
 
 		// Marshal the updated slice back to JSON
-		updatedJSON, err := json.Marshal(existingProvers)
+		updatedJSON, err := json.Marshal(cacheData)
 		if err != nil {
 			return err
 		}
 
 		// Store the updated JSON data back to Redis
-		err = rdb.Set(ctx, "validProvers", updatedJSON, time.Hour).Err()
+		err = rdb.Set(ctx, TESTNET_PROVER_ENDPOINTS, updatedJSON, time.Hour).Err()
 		if err != nil {
 			return err
 		}
@@ -233,6 +252,10 @@ func fetchAndCacheValidProvers(app *pocketbase.PocketBase, collection string) er
 		return err
 	}
 
+	// return nil when there are no records so empty array can be returned to user
+	if len(records) < 1 {
+		return nil
+	}
 	var recordsResult []Prover
 
 	// Loop through the records and store the endpoints that are available in recordsResult
@@ -255,8 +278,8 @@ func fetchAndCacheValidProvers(app *pocketbase.PocketBase, collection string) er
 	if err != nil {
 		return err
 	}
-  // Set cache that automatically resets after 24 hours
-	err = rdb.Set(ctx, collection, data, 24 * time.Hour).Err()
+	// Set cache that automatically resets after 24 hours
+	err = rdb.Set(ctx, collection, data, 24*time.Hour).Err()
 	if err != nil {
 		return err
 	}
