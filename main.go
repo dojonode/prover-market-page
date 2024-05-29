@@ -51,7 +51,7 @@ func main() {
 
 	// Initialize Redis client
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379", // Use localhost during development, redis-server points to the docker-compose redis container
+		Addr:     "redis-server:6379", // Use localhost during development, redis-server points to the docker-compose redis container
 		Password: "",
 		DB:       0,
 	})
